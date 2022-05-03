@@ -4,64 +4,81 @@ import torch
 
 class GeneralCamera:
     @classmethod
-    def camera2image(cls, points, intrinsic):
+    def camera2image(cls, points, intrinsic, batch=False):
         raise NotImplementedError
 
     @classmethod
-    def image2camera(cls, points, intrinsic):
+    def image2camera(cls, points, intrinsic, batch=False):
         raise NotImplementedError
 
     @classmethod
-    def world2camera(cls, world_points, extrinsic):
+    def world2camera(cls, world_points, extrinsic, batch=False):
         raise NotImplementedError
 
     @classmethod
-    def camera2world(cls, camera_points, extrinsic, depth):
+    def camera2world(cls, camera_points, extrinsic, depth, batch=False):
         raise NotImplementedError
 
     @classmethod
-    def world2image(cls, world_points, intrinsic, extrinsic):
-        camera_points = cls.world2camera(world_points, extrinsic)
-        image_points = cls.camera2image(camera_points, intrinsic)
+    def world2image(cls, world_points, intrinsic, extrinsic, batch=False):
+        camera_points = cls.world2camera(world_points, extrinsic, batch)
+        image_points = cls.camera2image(camera_points, intrinsic, batch)
         return image_points
 
     @classmethod
-    def image2world(cls, image_points, intrinsic, extrinsic, depth):
-        camera_points = cls.image2camera(image_points, intrinsic)
-        world_points = cls.camera2world(camera_points, extrinsic, depth)
+    def image2world(cls, image_points, intrinsic, extrinsic, depth, batch=False):
+        camera_points = cls.image2camera(image_points, intrinsic, batch)
+        world_points = cls.camera2world(camera_points, extrinsic, depth, batch)
         return world_points
+
+    @classmethod
+    def matmul_mat_points(cls, mat, points, batch):
+        dim_shift = 1 if batch else 0
+        h, w, axis = 0 + dim_shift, 1 + dim_shift, 2 + dim_shift
+        if batch:
+            mat = mat.unsqueeze(1)
+            points = mat @ points.permute(0, h, axis, w)
+            points = points.permute(0, h, axis, w)
+        else:
+            points = mat @ points.permute(h, axis, w)
+            points = points.permute(h, axis, w)
+        return points
+
+    @classmethod
+    def add_axis(cls, points):
+        points = torch.cat(
+            [
+                points,
+                torch.ones(points.shape[:-1]).unsqueeze(-1)
+            ],
+            axis=-1)
+        return points
 
 
 class PinholeCamera(GeneralCamera):
     @classmethod
-    def camera2image(cls, camera_points, intrinsic):
+    def camera2image(cls, camera_points, intrinsic, batch=False):
         camera_points /= camera_points[..., [2]]  # to be homogeneous coords
-        image_points = intrinsic @ camera_points.permute(0, 2, 1)
-        image_points = image_points.permute(0, 2, 1)
+        image_points = cls.matmul_mat_points(intrinsic, camera_points, batch)
         image_points = image_points[..., :2]
         return image_points
 
     @classmethod
-    def image2camera(cls, image_points, intrinsic):
-        # add z-axis
-        image_points = torch.cat([image_points, torch.ones(image_points.shape[:2]).unsqueeze(-1)], axis=-1)
+    def image2camera(cls, image_points, intrinsic, batch=False):
+        image_points = cls.add_axis(image_points)
         intrinsic_inv = torch.linalg.inv(intrinsic)
-        camera_points = intrinsic_inv @ image_points.permute(0, 2, 1)
-        camera_points = camera_points.permute(0, 2, 1)
+        camera_points = cls.matmul_mat_points(intrinsic_inv, image_points, batch)
         return camera_points
 
     @classmethod
-    def world2camera(cls, world_points, extrinsic):
-        camera_points = extrinsic[:3, :] @ world_points.permute(0, 2, 1)
-        camera_points = camera_points.permute(0, 2, 1)
+    def world2camera(cls, world_points, extrinsic, batch=False):
+        camera_points = cls.matmul_mat_points(extrinsic[..., :3, :], world_points, batch)
         return camera_points
 
     @classmethod
-    def camera2world(cls, camera_points, extrinsic, depth):
+    def camera2world(cls, camera_points, extrinsic, depth, batch=False):
         camera_points *= depth.unsqueeze(-1)
-        ones = torch.ones((camera_points.shape[0], camera_points.shape[1], 1))
-        camera_points = torch.concat([camera_points, ones], axis=-1)
+        camera_points = cls.add_axis(camera_points)
         extrinsic_inv = torch.linalg.inv(extrinsic)
-        world_points = extrinsic_inv @ camera_points.permute(0, 2, 1)
-        world_points = world_points.permute(0, 2, 1)
+        world_points = cls.matmul_mat_points(extrinsic_inv, camera_points, batch)
         return world_points
