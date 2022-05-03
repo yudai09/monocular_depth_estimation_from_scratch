@@ -36,8 +36,7 @@ class GeneralCamera:
         dim_shift = 1 if batch else 0
         h, w, axis = 0 + dim_shift, 1 + dim_shift, 2 + dim_shift
         if batch:
-            mat = mat.unsqueeze(1)
-            points = mat @ points.permute(0, h, axis, w)
+            points = mat.unsqueeze(1) @ points.permute(0, h, axis, w)
             points = points.permute(0, h, axis, w)
         else:
             points = mat @ points.permute(h, axis, w)
@@ -49,7 +48,7 @@ class GeneralCamera:
         points = torch.cat(
             [
                 points,
-                torch.ones(points.shape[:-1]).unsqueeze(-1)
+                torch.ones(points.shape[:-1]).unsqueeze(-1).to(points.device)
             ],
             axis=-1)
         return points
