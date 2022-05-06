@@ -1,4 +1,3 @@
-from re import A
 import torch
 
 
@@ -36,10 +35,13 @@ class GeneralCamera:
         dim_shift = 1 if batch else 0
         h, w, axis = 0 + dim_shift, 1 + dim_shift, 2 + dim_shift
         if batch:
-            points = mat.unsqueeze(1) @ points.permute(0, h, axis, w)
+            mat = mat.unsqueeze(1)
+            points = points.permute(0, h, axis, w)
+            points = mat @ points
             points = points.permute(0, h, axis, w)
         else:
-            points = mat @ points.permute(h, axis, w)
+            points = points.permute(h, axis, w)
+            points = mat @ points
             points = points.permute(h, axis, w)
         return points
 
@@ -53,6 +55,28 @@ class GeneralCamera:
             axis=-1)
         return points
 
+    @classmethod
+    def intrinsic_inv(cls, K):
+        return torch.stack(
+            [
+                torch.stack([1 / K[...,  0, 0], K[..., 0, 1], - K[..., 0, 2] / K[..., 0, 0]], dim=-1),
+                torch.stack([K[..., 1, 0], 1 / K[..., 1, 1], - K[..., 1, 2] / K[..., 1, 1]], dim=-1),
+                torch.stack([K[..., 2, 0], K[..., 2, 1], K[..., 2, 2]], dim=-1)
+            ],
+            dim=-2)
+
+    @classmethod
+    def extrinsic_inv(cls, RT, batch=False):
+        RT_inv = torch.eye(4, device=RT.device, dtype=RT.dtype)
+        if batch:
+            RT_inv = RT_inv.repeat([len(RT), 1, 1])
+        RT_inv[..., :3, :3] = torch.transpose(RT[..., :3, :3], -2, -1)
+        if batch:
+            RT_inv[..., :3, -1] = torch.bmm(-1. * RT_inv[..., :3, :3], RT[..., :3, -1].unsqueeze(-1)).squeeze(-1)
+        else:
+            RT_inv[..., :3, -1] = (-1. * RT_inv[..., :3, :3]) @ (RT[..., :3, -1])
+        return RT_inv
+
 
 class PinholeCamera(GeneralCamera):
     @classmethod
@@ -65,7 +89,7 @@ class PinholeCamera(GeneralCamera):
     @classmethod
     def image2camera(cls, image_points, intrinsic, batch=False):
         image_points = cls.add_axis(image_points)
-        intrinsic_inv = torch.linalg.inv(intrinsic)
+        intrinsic_inv = cls.intrinsic_inv(intrinsic)
         camera_points = cls.matmul_mat_points(intrinsic_inv, image_points, batch)
         return camera_points
 
@@ -78,6 +102,6 @@ class PinholeCamera(GeneralCamera):
     def camera2world(cls, camera_points, extrinsic, depth, batch=False):
         camera_points *= depth.unsqueeze(-1)
         camera_points = cls.add_axis(camera_points)
-        extrinsic_inv = torch.linalg.inv(extrinsic)
+        extrinsic_inv = cls.extrinsic_inv(extrinsic, batch=True)
         world_points = cls.matmul_mat_points(extrinsic_inv, camera_points, batch)
         return world_points
