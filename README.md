@@ -9,5 +9,5 @@ Monocular depth estimation from scratch
 
 * [x] write dataset class
 * [x] write training code
-* [] write evaluation code
-* [] enhance precision using SoTA algorithm
+* [ ] write evaluation code
+* [ ] enhance precision using SoTA algorithm
