@@ -102,6 +102,6 @@ class PinholeCamera(GeneralCamera):
     def camera2world(cls, camera_points, extrinsic, depth, batch=False):
         camera_points *= depth.unsqueeze(-1)
         camera_points = cls.add_axis(camera_points)
-        extrinsic_inv = cls.extrinsic_inv(extrinsic, batch=True)
+        extrinsic_inv = cls.extrinsic_inv(extrinsic, batch=batch)
         world_points = cls.matmul_mat_points(extrinsic_inv, camera_points, batch)
         return world_points
