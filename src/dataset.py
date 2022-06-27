@@ -58,7 +58,7 @@ class VKITTI2(Dataset):
                 indices = [frame_idx + i for frame_idx in self.frame_inds]
                 sample = []
                 for idx in indices:
-                    if 0 > idx or idx > len(sequence):
+                    if 0 > idx or idx >= len(sequence):
                         break
                     sample.append(sequence[idx])
                 else:
